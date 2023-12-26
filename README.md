@@ -29,6 +29,7 @@ Raw Pointcloud | Reconstruction Results |
 <img src='https://github.com/ZorAttC/COLOR_SHINE_MAPPING/blob/master/IMG/2023-12-22%2020-33-58%20%E7%9A%84%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE.png'> | <img src='https://github.com/ZorAttC/COLOR_SHINE_MAPPING/blob/master/IMG/2023-12-20%2022-39-17%20%E7%9A%84%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE.png'> |
 
 
+**As you can see, the reconstruction quality is not so satisfying and I think there is more can be done to optimize the result.**
 ### Reference
 Thanks to these great works!
 
