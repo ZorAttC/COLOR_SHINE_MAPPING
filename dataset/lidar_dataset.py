@@ -20,7 +20,7 @@ from model.feature_octree import FeatureOctree
 # better to write a new dataloader for RGB-D inputs, not always converting them to KITTI Lidar format
 
 class LiDARDataset(Dataset):
-    def __init__(self, config: SHINEConfig, octree: FeatureOctree = None) -> None:
+    def __init__(self, config: SHINEConfig, octree: FeatureOctree = None,rgb_octree:FeatureOctree = None) -> None:
 
         super().__init__()
 
@@ -52,6 +52,8 @@ class LiDARDataset(Dataset):
 
         # feature octree
         self.octree = octree
+        self.rgb_octree = rgb_octree
+
 
         self.last_relative_tran = np.eye(4)
 
@@ -103,7 +105,7 @@ class LiDARDataset(Dataset):
         self.coord_pool = torch.empty((0, 3), device=self.pool_device, dtype=self.dtype)
         self.sdf_label_pool = torch.empty((0), device=self.pool_device, dtype=self.dtype)
         self.normal_label_pool = torch.empty((0, 3), device=self.pool_device, dtype=self.dtype)
-        self.color_label_pool = torch.empty((0, 3), device=self.pool_device, dtype=self.dtype)
+        self.rgb_label_pool = torch.empty((0, 3), device=self.pool_device, dtype=self.dtype)
         self.sem_label_pool = torch.empty((0), device=self.pool_device, dtype=torch.long)
         self.weight_pool = torch.empty((0), device=self.pool_device, dtype=self.dtype)
         self.sample_depth_pool = torch.empty((0), device=self.pool_device, dtype=self.dtype)
@@ -188,6 +190,10 @@ class LiDARDataset(Dataset):
 
         frame_pc_s_torch = torch.tensor(np.asarray(frame_pc_s.points), dtype=self.dtype, device=self.pool_device)
 
+        frame_rgb_torch = None
+        if self.config.rgb_on:
+            frame_rgb_torch = torch.tensor(np.asarray(frame_pc_s.colors), dtype=self.dtype, device=self.pool_device)
+
         frame_normal_torch = None
         if self.config.estimate_normal:
             frame_normal_torch = torch.tensor(np.asarray(frame_pc_s.normals), dtype=self.dtype, device=self.pool_device)
@@ -199,9 +205,9 @@ class LiDARDataset(Dataset):
         # print("Frame point cloud count:", frame_pc_s_torch.shape[0])
 
         # sampling the points
-        (coord, sdf_label, normal_label, sem_label, weight, sample_depth, ray_depth) = \
+        (coord, sdf_label, normal_label, sem_label, weight, sample_depth, ray_depth,rgb_label) = \
             self.sampler.sample(frame_pc_s_torch, frame_origin_torch, \
-            frame_normal_torch, frame_label_torch)
+            frame_normal_torch, frame_label_torch,frame_rgb_torch)
         
         origin_repeat = frame_origin_torch.repeat(coord.shape[0], 1)
         time_repeat = torch.tensor(frame_id, dtype=self.dtype, device=self.pool_device).repeat(coord.shape[0])
@@ -211,6 +217,7 @@ class LiDARDataset(Dataset):
             if self.config.octree_from_surface_samples:
                 # update with the sampled surface points
                 self.octree.update(coord[weight > 0, :].to(self.device), incremental_on)
+                self.rgb_octree.update(coord[weight > 0, :].to(self.device), incremental_on)
             else:
                 # update with the original points
                 self.octree.update(frame_pc_s_torch.to(self.device), incremental_on)  
@@ -223,7 +230,7 @@ class LiDARDataset(Dataset):
             self.sdf_label_pool = sdf_label
             self.normal_label_pool = normal_label
             self.sem_label_pool = sem_label
-            # self.color_label_pool = color_label
+            self.rgb_label_pool = rgb_label
             self.weight_pool = weight
             self.sample_depth_pool = sample_depth
             self.ray_depth_pool = ray_depth
@@ -280,11 +287,16 @@ class LiDARDataset(Dataset):
 
     def read_point_cloud(self, filename: str):
         # read point cloud from either (*.ply, *.pcd) or (kitti *.bin) format
+        points=None
         if ".bin" in filename:
             points = np.fromfile(filename, dtype=np.float32).reshape((-1, 4))[:, :3].astype(np.float64)
         elif ".ply" in filename or ".pcd" in filename:
             pc_load = o3d.io.read_point_cloud(filename)
-            points = np.asarray(pc_load.points, dtype=np.float64)
+            if pc_load.colors is not None:
+                points = np.asarray(pc_load.points, dtype=np.float64)
+                colors = np.asarray(pc_load.colors, dtype=np.float64)
+                points = np.concatenate((points, colors), axis=1)
+            points = np.asarray(points, dtype=np.float64)
         else:
             sys.exit(
                 "The format of the imported point cloud is wrong (support only *pcd, *ply and *bin)"
@@ -293,7 +305,11 @@ class LiDARDataset(Dataset):
             points, self.config.min_z, self.config.min_range
         )
         pc_out = o3d.geometry.PointCloud()
-        pc_out.points = o3d.utility.Vector3dVector(preprocessed_points) # Vector3dVector is faster for np.float64 
+        if preprocessed_points.shape[1]==3:
+            pc_out.points = o3d.utility.Vector3dVector(preprocessed_points) # Vector3dVector is faster for np.float64 
+        elif preprocessed_points.shape[1]==6:
+            pc_out.points = o3d.utility.Vector3dVector(preprocessed_points[:,:3])
+            pc_out.colors = o3d.utility.Vector3dVector(preprocessed_points[:,3:])
         return pc_out
 
     def read_semantic_point_label(self, bin_filename: str, label_filename: str):
@@ -421,9 +437,14 @@ class LiDARDataset(Dataset):
             else: 
                 sem_label = None
 
+            if self.rgb_label_pool is not None:
+               rgb_label = self.rgb_label_pool[index,:].to(self.device) # one rgb label for one ray
+            else: 
+                rgb_label = None
+
             ray_depth = self.ray_depth_pool[ray_index].to(self.device)
 
-            return coord, sample_depth, ray_depth, normal_label, sem_label, weight
+            return coord, sample_depth, ray_depth, normal_label, sem_label,rgb_label, weight
         
         else: # use point sample
             train_sample_count = self.sdf_label_pool.shape[0]
@@ -442,8 +463,13 @@ class LiDARDataset(Dataset):
                 sem_label = self.sem_label_pool[index].to(self.device)
             else: 
                 sem_label = None
+            
+            if self.rgb_label_pool is not None:
+               rgb_label = self.rgb_label_pool[index,:].to(self.device) # one rgb label for one ray
+            else: 
+                rgb_label = None
 
             weight = self.weight_pool[index].to(self.device)
 
-            return coord, sdf_label, origin, ts, normal_label, sem_label, weight
+            return coord, sdf_label, origin, ts, normal_label, sem_label,rgb_label, weight
 

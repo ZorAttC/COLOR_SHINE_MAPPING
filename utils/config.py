@@ -70,7 +70,7 @@ class SHINEConfig:
         self.normal_max_nn: int = (
             20  # supporting neighbor count for estimating the normal
         )
-
+     
         # semantic related
         self.semantic_on: bool = False # semantic shine mapping on [semantic]
         self.sem_class_count: int = 20 # semantic class count: 20 for semantic kitti
@@ -133,6 +133,13 @@ class SHINEConfig:
         self.sem_mlp_hidden_dim: int = 32
         self.sem_mlp_bias_on: bool = True
         
+        #rgb related
+        self.rgb_on:bool= False
+        self.rgb_mlp_hidden_dim: int = 32
+        self.rgb_mlp_level: int = 2
+        self.rgb_mlp_bias_on: bool = True
+        self.weight_rgb: float = 0.1
+
         self.freeze_after_frame: int = 20  # For incremental mode only, if the decoder model is not loaded , it would be trained and freezed after such frame number
 
         # loss
@@ -285,6 +292,18 @@ class SHINEConfig:
         self.octree_from_surface_samples = config_args["octree"][
             "octree_from_surface_samples"
         ]  # build the octree from the surface samples or only the measurement points
+
+        #rgb decoder
+        self.rgb_on=config_args["rgb"]["rgb_on"]
+        self.rgb_mlp_level = config_args["rgb"][
+            "rgb_mlp_level"
+        ]  # number of the level of the mlp decoder
+        self.rgb_mlp_hidden_dim = config_args["rgb"][
+            "rgb_mlp_hidden_dim"
+        ]  # dimension of the mlp's hidden layer
+        # freeze the decoder after runing for x frames (used for incremental mapping to avoid forgeting)
+        self.rgb_mlp_bias_on = config_args["rgb"]["rgb_mlp_bias_on"]
+        self.weight_rgb = config_args["rgb"]["weight_rgb"]
 
         # decoder
         self.geo_mlp_level = config_args["decoder"][

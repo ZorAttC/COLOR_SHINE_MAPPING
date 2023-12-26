@@ -16,11 +16,14 @@ class Mesher():
     # TODO: add methods to reconstruct large scale meshs without memory issues [marching cubes in blocks]
 
     def __init__(self, config: SHINEConfig, octree: FeatureOctree, \
-        geo_decoder: Decoder, sem_decoder: Decoder):
+        geo_decoder: Decoder, sem_decoder: Decoder,rgb_decoder: Decoder=None,rgb_octree:FeatureOctree=None):
 
         self.config = config
     
         self.octree = octree
+        if self.config.rgb_on:
+            self.rgb_octree = rgb_octree
+            self.rgb_decoder = rgb_decoder 
         self.geo_decoder = geo_decoder
         self.sem_decoder = sem_decoder
         self.device = config.device
@@ -32,7 +35,15 @@ class Mesher():
 
         self.global_transform = np.eye(4)
     
-    def query_points(self, coord, bs, query_sdf = True, query_sem = False, query_mask = True):
+    def query_rgb(self,coord)->np.array:
+        with torch.no_grad():
+            rgb_feature=self.rgb_octree.query_feature(coord,True)
+            rgb_pred=self.rgb_decoder.rgb(rgb_feature).detach().cpu().numpy()
+            rgb_pred=rgb_pred.clip(0,1)
+        return rgb_pred
+
+
+    def query_points(self, coord, bs, query_sdf = True, query_sem = False, query_mask = True,query_rgb=False):
         """ query the sdf value, semantic label and marching cubes mask for points
         Args:
             coord: Nx3 torch tensor, the coordinates of all N (axbxc) query points in the scaled
@@ -90,6 +101,7 @@ class Mesher():
                         mask_mc = torch.all(mask_mc, dim=1)
                         mc_mask[head:tail] = mask_mc.detach().cpu().numpy()
                         # but for scimage's marching cubes, the top right corner's mask should also be true to conduct marching cubes
+                    
             else:
                 feature = self.octree.query_feature(coord, True)
                 if query_sdf:
@@ -106,7 +118,7 @@ class Mesher():
                     mask_mc = check_level_indices >= 0
                     # all should be true (all the corner should be valid)
                     mc_mask = torch.all(mask_mc, dim=1).detach().cpu().numpy()
-
+                
         return sdf_pred, sem_pred, mc_mask
 
     def get_query_from_bbx(self, bbx, voxel_size):
@@ -295,7 +307,7 @@ class Mesher():
     # much faster and also memory-wise more efficient
     def recon_octree_mesh(self, query_level, mc_res_m, mesh_path, map_path, \
                           save_map = False, estimate_sem = False, estimate_normal = True, \
-                          filter_isolated_mesh = True, filter_free_space_vertices = True): 
+                          filter_isolated_mesh = True, filter_free_space_vertices = True,rgb_on=False): 
 
         nodes_coord_scaled = self.octree.get_octree_nodes(query_level) # query level top-down
         nodes_count = nodes_coord_scaled.shape[0]
@@ -350,6 +362,11 @@ class Mesher():
             o3d.utility.Vector3dVector(verts),
             o3d.utility.Vector3iVector(faces)
         )
+
+        if rgb_on:
+            rgb_verts=self.query_rgb(torch.tensor(verts*self.world_scale,device=self.device))
+            rgb_verts=np.asarray(rgb_verts,dtype=np.float64)
+            mesh.vertex_colors=o3d.utility.Vector3dVector(rgb_verts)
 
         if estimate_sem: 
             mesh = self.estimate_vertices_sem(mesh, verts, filter_free_space_vertices)

@@ -18,7 +18,8 @@ class dataSampler():
     def sample(self, points_torch, 
                sensor_origin_torch,
                normal_torch,
-               sem_label_torch):
+               sem_label_torch,
+               rgb_torch):
 
         dev = self.dev
 
@@ -115,6 +116,12 @@ class dataSampler():
         if normal_torch is not None:
             normal_label_tensor = normal_torch.repeat(all_sample_n,1)
         
+
+        rgb_label_tensor=None
+        # assign the rgb label to the samples
+        if rgb_torch is not None:
+            rgb_label_tensor=rgb_torch.repeat(all_sample_n,1)
+
         # assign the semantic label to the samples (including free space as the 0 label)
         sem_label_tensor = None
         if sem_label_torch is not None:
@@ -132,11 +139,13 @@ class dataSampler():
             normal_label_tensor = normal_label_tensor.reshape(all_sample_n, -1, 3).transpose(0, 1).reshape(-1, 3)
         if sem_label_torch is not None:
             sem_label_tensor = sem_label_tensor.reshape(all_sample_n, -1).transpose(0, 1).reshape(-1)
+        if rgb_label_tensor is not None:
+            rgb_label_tensor=rgb_label_tensor.reshape(all_sample_n, -1, 3).transpose(0, 1).reshape(-1, 3)
 
         # ray distance (distances) is not repeated
 
         return all_sample_points, sdf_label_tensor, normal_label_tensor, sem_label_tensor, \
-            weight_tensor, depths_tensor, distances
+            weight_tensor, depths_tensor, distances,rgb_label_tensor
     
 
     # space carving sampling (deprecated, to polish)

@@ -53,7 +53,7 @@ def setup_experiment(config: SHINEConfig):
     return run_path
 
 
-def setup_optimizer(config: SHINEConfig, octree_feat, mlp_geo_param, mlp_sem_param, sigma_size) -> Optimizer:
+def setup_optimizer(config: SHINEConfig, octree_feat, mlp_geo_param, mlp_sem_param, sigma_size,rgb_octree_feat,mlp_rgb_param) -> Optimizer:
     lr_cur = config.lr
     opt_setting = []
     # weight_decay is for L2 regularization, only applied to MLP
@@ -63,12 +63,20 @@ def setup_optimizer(config: SHINEConfig, octree_feat, mlp_geo_param, mlp_sem_par
     if config.semantic_on and mlp_sem_param is not None:
         mlp_sem_param_opt_dict = {'params': mlp_sem_param, 'lr': lr_cur, 'weight_decay': config.weight_decay} 
         opt_setting.append(mlp_sem_param_opt_dict)
+    if config.rgb_on and mlp_rgb_param is not None:
+        mlp_rgb_param_opt_dict = {'params': mlp_rgb_param, 'lr': lr_cur, 'weight_decay': config.weight_decay} 
+        opt_setting.append(mlp_rgb_param_opt_dict)
     # feature octree
     for i in range(config.tree_level_feat):
         # try to also add L2 regularization on the feature octree (results not quite good)
         feat_opt_dict = {'params': octree_feat[config.tree_level_feat-i-1], 'lr': lr_cur} 
         lr_cur *= config.lr_level_reduce_ratio
         opt_setting.append(feat_opt_dict)
+    for i in range(config.tree_level_feat):
+        # try to also add L2 regularization on the feature octree (results not quite good)
+        rgb_feat_opt_dict = {'params': rgb_octree_feat[config.tree_level_feat-i-1], 'lr': lr_cur} 
+        lr_cur *= config.lr_level_reduce_ratio
+        opt_setting.append(rgb_feat_opt_dict)
     # make sigma also learnable for differentiable rendering (but not for our method)
     if config.ray_loss:
         sigma_opt_dict = {'params': sigma_size, 'lr': config.lr}

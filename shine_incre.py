@@ -33,9 +33,11 @@ def run_shine_mapping_incremental():
 
     # initialize the feature octree
     octree = FeatureOctree(config)
+    rgb_octree = FeatureOctree(config)
     # initialize the mlp decoder
     geo_mlp = Decoder(config, is_geo_encoder=True)
     sem_mlp = Decoder(config, is_geo_encoder=False)
+    rgb_mlp = Decoder(config,is_geo_encoder=False,is_rgb_encoder=True)
 
     # Load the decoder model
     if config.load_model:
@@ -46,15 +48,18 @@ def run_shine_mapping_incremental():
         if config.semantic_on:
             sem_mlp.load_state_dict(loaded_model["sem_decoder"])
             freeze_model(sem_mlp) # fixed the decoder
+        if config.rgb_on:
+            rgb_mlp.load_state_dict(loaded_model["rgb_decoder"])
+            freeze_model(rgb_mlp)
         if 'feature_octree' in loaded_model.keys(): # also load the feature octree  
             octree = loaded_model["feature_octree"]
             octree.print_detail()
 
     # dataset
-    dataset = LiDARDataset(config, octree)
+    dataset = LiDARDataset(config,octree,rgb_octree)
 
     # mesh reconstructor
-    mesher = Mesher(config, octree, geo_mlp, sem_mlp)
+    mesher = Mesher(config, octree, geo_mlp, sem_mlp,rgb_mlp, rgb_octree)
     mesher.global_transform = inv(dataset.begin_pose_inv)
 
     # Non-blocking visualizer
@@ -64,6 +69,7 @@ def run_shine_mapping_incremental():
     # learnable parameters
     geo_mlp_param = list(geo_mlp.parameters())
     sem_mlp_param = list(sem_mlp.parameters())
+    rgb_mlp_param = list(rgb_mlp.parameters())
     # learnable sigma for differentiable rendering
     sigma_size = torch.nn.Parameter(torch.ones(1, device=dev)*1.0) 
     # fixed sigma for sdf prediction supervised with BCE loss
@@ -92,6 +98,9 @@ def run_shine_mapping_incremental():
             freeze_model(geo_mlp) # fixed the decoder
             if config.semantic_on:
                 freeze_model(sem_mlp) # fixed the decoder
+            if config.rgb_on:
+                pass
+                #freeze_model(rgb_mlp)
 
         T0 = get_time()
         # preprocess, sample data and update the octree
@@ -103,7 +112,9 @@ def run_shine_mapping_incremental():
         dataset.process_frame(frame_id, incremental_on=config.continual_learning_reg or local_data_only)
         
         octree_feat = list(octree.parameters())
-        opt = setup_optimizer(config, octree_feat, geo_mlp_param, sem_mlp_param, sigma_size)
+        rgb_octree_feat = list(rgb_octree.parameters())
+
+        opt = setup_optimizer(config, octree_feat, geo_mlp_param, sem_mlp_param, sigma_size,rgb_octree_feat,rgb_mlp_param)
         octree.print_detail()
 
         T1 = get_time()
@@ -112,13 +123,14 @@ def run_shine_mapping_incremental():
             # load batch data (avoid using dataloader because the data are already in gpu, memory vs speed)
 
             # we do not use the ray rendering loss here for the incremental mapping
-            coord, sdf_label, _, _, _, sem_label, weight = dataset.get_batch() 
+            coord, sdf_label, _, _, _, sem_label, rgb_label,weight = dataset.get_batch() 
             
             if require_gradient:
                 coord.requires_grad_(True)
 
             # interpolate and concat the hierachical grid features
             feature = octree.query_feature(coord)
+            rgb_feature = rgb_octree.query_feature(coord)
             
             # predict the scaled sdf with the feature
             sdf_pred = geo_mlp.sdf(feature)
@@ -172,7 +184,10 @@ def run_shine_mapping_incremental():
                 loss_nll = nn.NLLLoss(reduction='mean')
                 sem_loss = loss_nll(sem_pred[::config.sem_label_decimation,:], sem_label[::config.sem_label_decimation])
                 cur_loss += config.weight_s * sem_loss
-
+            if config.rgb_on:
+                rgb_pred = rgb_mlp.rgb(rgb_feature)
+                rgb_loss = nn.L1Loss(reduction='mean')(rgb_pred, rgb_label)
+                cur_loss += config.weight_rgb * rgb_loss
             opt.zero_grad(set_to_none=True)
             cur_loss.backward() # this is the slowest part (about 10x the forward time)
             opt.step()
@@ -181,7 +196,8 @@ def run_shine_mapping_incremental():
 
             if config.wandb_vis_on:
                 wandb_log_content = {'iter': total_iter, 'loss/total_loss': cur_loss, 'loss/sdf_loss': sdf_loss, \
-                    'loss/reg_loss':reg_loss, 'loss/eikonal_loss': eikonal_loss, 'loss/consistency_loss': consistency_loss, 'loss/sem_loss': sem_loss} 
+                    'loss/reg_loss':reg_loss, 'loss/eikonal_loss': eikonal_loss, 'loss/consistency_loss': consistency_loss, \
+                        'loss/sem_loss': sem_loss,'loss/rgb_loss':rgb_loss} 
                 wandb.log(wandb_log_content)
         
         # calculate the importance of each octree feature
@@ -200,7 +216,7 @@ def run_shine_mapping_incremental():
             mesh_path = run_path + '/mesh/mesh_frame_' + str(frame_id+1) + ".ply"
             map_path = run_path + '/map/sdf_map_frame_' + str(frame_id+1) + ".ply"
             if config.mc_with_octree: # default
-                cur_mesh = mesher.recon_octree_mesh(config.mc_query_level, config.mc_res_m, mesh_path, map_path, config.save_map, config.semantic_on)
+                cur_mesh = mesher.recon_octree_mesh(config.mc_query_level, config.mc_res_m, mesh_path, map_path, config.save_map, config.semantic_on,rgb_on=config.rgb_on)
             else:
                 cur_mesh = mesher.recon_bbx_mesh(dataset.map_bbx, config.mc_res_m, mesh_path, map_path, config.save_map, config.semantic_on)
 

@@ -46,7 +46,9 @@ class KittiWriter:
         xyz_points=(xyz_points-pose[:3,3])@ pose[:3,:3]
         cloud = o3d.geometry.PointCloud()
         cloud.points = o3d.utility.Vector3dVector(np.array(xyz_points).reshape(-1,3))
-        cloud.colors = o3d.utility.Vector3dVector(np.array(colors).reshape(-1,3)/255)
+        #actually color is bgr format not rgb so we swap the first and last channel
+        colors = np.array(colors).reshape(-1,3)/255
+        cloud.colors = o3d.utility.Vector3dVector(colors[:,[2,1,0]])
         self.pointcloud_data = cloud
         self.odometry_data = pose
         self.save_kitti_format()
@@ -56,10 +58,10 @@ class KittiWriter:
             
             pose=self.odometry_data
             kitti_pose=np.concatenate((pose[0,:4],pose[1,:4],pose[2,:4]))
-            save_path="data/r3live_d/velodyne/"
+            save_path="data/r3live_e/velodyne/"
             if  not os.path.exists(os.path.join(os.path.curdir,save_path)):
                 os.makedirs(save_path)
-            with open("data/r3live_d/poses.txt", 'a') as f:
+            with open("data/r3live_e/poses.txt", 'a') as f:
                 f.write(' '.join(map(str, kitti_pose)) + '\n')
             o3d_io.write_point_cloud(f"{save_path}{self.sequence_number:06d}.ply", self.pointcloud_data)
 
