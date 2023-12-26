@@ -18,3 +18,20 @@ It is an implementation to use MLP decoder to regress the color value using the 
 
 ### Result 
 
+
+Raw Pointcloud | Reconstruction Results |
+:-: | :-: |
+<img src='https://github.com/ZorAttC/COLOR_SHINE_MAPPING/blob/master/IMG/2023-12-22%2020-36-17%20%E7%9A%84%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE.png'> | <img src='https://github.com/ZorAttC/COLOR_SHINE_MAPPING/blob/master/IMG/2023-12-20%2022-38-00%20%E7%9A%84%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE.png'> |
+
+
+Raw Pointcloud | Reconstruction Results |
+:-: | :-: |
+<img src='https://github.com/ZorAttC/COLOR_SHINE_MAPPING/blob/master/IMG/2023-12-22%2020-33-58%20%E7%9A%84%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE.png'> | <img src='https://github.com/ZorAttC/COLOR_SHINE_MAPPING/blob/master/IMG/2023-12-20%2022-39-17%20%E7%9A%84%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE.png'> |
+
+
+### Reference
+Thanks to these great works!
+
+[SHINE_MAPPING](https://github.com/PRBonn/SHINE_mapping/issues/24)
+
+[R3LIVE](https://github.com/hku-mars/r3live/)
