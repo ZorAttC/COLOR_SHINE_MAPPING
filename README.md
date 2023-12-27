@@ -13,7 +13,7 @@ It is an implementation to use MLP decoder to regress the color value using the 
 
 3. Modify your dataset path in color_incre_reg.yaml in the  config directory. And run the shine_incre.py,since the batch is not implemented yet.
    ```
-   python shine_incre.py config config/color_incre_reg.yaml
+   python shine_incre.py  config/color_incre_reg.yaml
    ```
 
 ### Result 
