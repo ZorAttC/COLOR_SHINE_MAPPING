@@ -8,7 +8,7 @@ It is an implementation to use MLP decoder to regress the color value using the 
   
 2. Run the script to convert the rosbag to kitti format.
    ```
-   python dataset/colorpoints_to kitti_format.py
+   python dataset/colorpoints_to_kitti_format.py
    ```
 
 3. Modify your dataset path in color_incre_reg.yaml in the  config directory. And run the shine_incre.py,since the batch is not implemented yet.
